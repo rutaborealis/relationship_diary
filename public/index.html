@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#FAF7F2">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Relationship diary">
+  <title>Relationship diary</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <div class="splash">
+      <div class="splash-heart">
+        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <path d="M24 40C24 40 5 27 5 16C5 10 10 5 16.5 5C20 5 23 7.5 24 7.5C25 7.5 28 5 31.5 5C38 5 43 10 43 16C43 27 24 40 24 40Z" fill="#C4778A"/>
+          <path d="M24 40C24 40 5 27 5 16C5 10 10 5 16.5 5C20 5 23 7.5 24 7.5C25 7.5 28 5 31.5 5C38 5 43 10 43 16C43 27 24 40 24 40Z" fill="url(#splashGrad)" opacity="0.35"/>
+          <defs><linearGradient id="splashGrad" x1="24" y1="5" x2="24" y2="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="white"/><stop offset="1" stop-color="transparent"/></linearGradient></defs>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Supabase JS (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
