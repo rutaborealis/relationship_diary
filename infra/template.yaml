@@ -1,0 +1,644 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Relationship Diary — AWS SAM (TypeScript + DynamoDB)
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 10
+    MemorySize: 256
+    Architectures: [arm64]
+    Environment:
+      Variables:
+        TABLE_NAME:       !Ref DiaryMainTable
+        PUSH_TABLE_NAME:  !Ref DiaryPushTable
+        APP_DOMAIN:       !Ref AppDomain
+        SES_FROM_ADDRESS: !Ref SesFromAddress
+        STAGE:            !Ref Stage
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,PATCH,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowOrigin:  "'*'"
+
+Parameters:
+  Stage:
+    Type:    String
+    Default: prod
+    AllowedValues: [dev, prod]
+  AppDomain:
+    Type:    String
+    Default: ''
+    Description: >
+      Public domain for invite links (e.g. https://d1234.cloudfront.net).
+      Leave empty on first deploy; update after CloudFront URL is known.
+  SesFromAddress:
+    Type:    String
+    Default: 'no-reply@yourdomain.com'
+    Description: Verified sender email address (Resend).
+  DomainName:
+    Type:    String
+    Default: ''
+    Description: Custom domain (e.g. ourdiary.love). Leave empty to use CloudFront URL.
+  CertificateArn:
+    Type:    String
+    Default: ''
+    Description: ACM certificate ARN in us-east-1 for the custom domain.
+
+Conditions:
+  HasDomain: !Not [!Equals [!Ref DomainName, '']]
+
+Resources:
+
+  # ── DynamoDB Tables ──────────────────────────────────────────────────────
+  DiaryMainTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'DiaryMain-${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK,    AttributeType: S }
+        - { AttributeName: SK,    AttributeType: S }
+        - { AttributeName: email, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH  }
+        - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - { AttributeName: email, KeyType: HASH }
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes: [userId, name, gender, emailVerified, partnerId]
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  DiaryPushTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'DiaryPush-${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: userId,        AttributeType: S }
+        - { AttributeName: reminder_time, AttributeType: S }
+      KeySchema:
+        - { AttributeName: userId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: ReminderTimeIndex
+          KeySchema:
+            - { AttributeName: reminder_time, KeyType: HASH  }
+            - { AttributeName: userId,         KeyType: RANGE }
+          Projection:
+            ProjectionType: ALL
+
+  # ── S3 + CloudFront ──────────────────────────────────────────────────────
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'diary-frontend-${Stage}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls:       true
+        BlockPublicPolicy:     true
+        IgnorePublicAcls:      true
+        RestrictPublicBuckets: true
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name:                          !Sub 'diary-oac-${Stage}'
+        OriginAccessControlOriginType: s3
+        SigningBehavior:               always
+        SigningProtocol:               sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled:           true
+        DefaultRootObject: index.html
+        HttpVersion:       http2
+        PriceClass:        PriceClass_100
+        Aliases: !If
+          - HasDomain
+          - [!Ref DomainName, !Sub 'www.${DomainName}']
+          - !Ref AWS::NoValue
+        ViewerCertificate: !If
+          - HasDomain
+          - AcmCertificateArn:      !Ref CertificateArn
+            SslSupportMethod:        sni-only
+            MinimumProtocolVersion:  TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+        Origins:
+          - Id:         S3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig: {}
+            OriginAccessControlId: !Ref CloudFrontOAC
+          - Id:         APIOrigin
+            DomainName: !Sub '${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com'
+            OriginPath:  /Prod
+            CustomOriginConfig:
+              HTTPSPort:            443
+              OriginProtocolPolicy: https-only
+        DefaultCacheBehavior:
+          TargetOriginId:       S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId:        658327ea-f89d-4fab-a63d-7e88639e58f6
+          AllowedMethods:       [GET, HEAD]
+        CacheBehaviors:
+          - PathPattern:         '/api/*'
+            TargetOriginId:       APIOrigin
+            ViewerProtocolPolicy: https-only
+            CachePolicyId:        4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            AllowedMethods:       [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  # ── Auth Functions ────────────────────────────────────────────────────────
+  AuthRegisterFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [register.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-auth-register-${Stage}'
+      CodeUri:      ../backend/src/functions/auth/
+      Handler:      register.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/auth/register, Method: post } }
+
+  AuthVerifyEmailFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [verify-email.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-auth-verify-email-${Stage}'
+      CodeUri:      ../backend/src/functions/auth/
+      Handler:      verify-email.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/auth/verify-email, Method: post } }
+
+  AuthLoginFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [login.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-auth-login-${Stage}'
+      CodeUri:      ../backend/src/functions/auth/
+      Handler:      login.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/auth/login, Method: post } }
+
+  AuthMeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [me.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-auth-me-${Stage}'
+      CodeUri:      ../backend/src/functions/auth/
+      Handler:      me.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/auth/me, Method: get } }
+
+  # ── Users & Partners Functions ────────────────────────────────────────────
+  UsersSearchFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [search.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-users-search-${Stage}'
+      CodeUri:      ../backend/src/functions/users/
+      Handler:      search.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/users/search, Method: get } }
+
+  PartnerInviteFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [invite.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-partner-invite-${Stage}'
+      CodeUri:      ../backend/src/functions/partners/
+      Handler:      invite.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/partner/invite, Method: post } }
+
+  PartnerAcceptFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [accept.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-partner-accept-${Stage}'
+      CodeUri:      ../backend/src/functions/partners/
+      Handler:      accept.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/partner/accept, Method: post } }
+
+  PartnerPendingFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [pending.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-partner-pending-${Stage}'
+      CodeUri:      ../backend/src/functions/partners/
+      Handler:      pending.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/partner/pending, Method: get } }
+
+  # ── Entries Functions ──────────────────────────────────────────────────────
+  EntriesGetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [get.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-entries-get-${Stage}'
+      CodeUri:      ../backend/src/functions/entries/
+      Handler:      get.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/entries, Method: get } }
+
+  EntriesSaveFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [save.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-entries-save-${Stage}'
+      CodeUri:      ../backend/src/functions/entries/
+      Handler:      save.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/entries, Method: post } }
+
+  EntriesDeleteFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [delete.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-entries-delete-${Stage}'
+      CodeUri:      ../backend/src/functions/entries/
+      Handler:      delete.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/entries, Method: delete } }
+
+  CalendarFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [calendar.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-calendar-${Stage}'
+      CodeUri:      ../backend/src/functions/entries/
+      Handler:      calendar.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/calendar, Method: get } }
+
+  # ── Qualities Functions ────────────────────────────────────────────────────
+  QualitiesListFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [list.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-qualities-list-${Stage}'
+      CodeUri:      ../backend/src/functions/qualities/
+      Handler:      list.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/qualities, Method: get } }
+
+  QualitiesCreateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [create.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-qualities-create-${Stage}'
+      CodeUri:      ../backend/src/functions/qualities/
+      Handler:      create.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/qualities, Method: post } }
+
+  QualitiesUpdateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [update.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-qualities-update-${Stage}'
+      CodeUri:      ../backend/src/functions/qualities/
+      Handler:      update.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: '/api/qualities/{id}', Method: patch } }
+
+  QualitiesDeleteFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [remove.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-qualities-delete-${Stage}'
+      CodeUri:      ../backend/src/functions/qualities/
+      Handler:      remove.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: '/api/qualities/{id}', Method: delete } }
+
+  # ── Push Functions ─────────────────────────────────────────────────────────
+  VapidKeyFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [vapid-key.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-vapid-key-${Stage}'
+      CodeUri:      ../backend/src/functions/push/
+      Handler:      vapid-key.handler
+      Policies:
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/vapid-public-key, Method: get } }
+
+  PushSubscribeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [subscribe.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-push-subscribe-${Stage}'
+      CodeUri:      ../backend/src/functions/push/
+      Handler:      subscribe.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryPushTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/subscribe, Method: post } }
+
+  PushReminderFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [reminder.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-push-reminder-${Stage}'
+      CodeUri:      ../backend/src/functions/push/
+      Handler:      reminder.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryPushTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/reminder, Method: post } }
+
+  NotifyPartnerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [notify-partner.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-notify-partner-${Stage}'
+      CodeUri:      ../backend/src/functions/push/
+      Handler:      notify-partner.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryPushTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/notify-partner, Method: post } }
+
+  PushSettingsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [settings.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-push-settings-${Stage}'
+      CodeUri:      ../backend/src/functions/push/
+      Handler:      settings.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref DiaryPushTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Api: { Type: Api, Properties: { Path: /api/push-settings, Method: get } }
+
+  # ── Cron Function ─────────────────────────────────────────────────────────
+  RemindersCronFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        Sourcemap: true
+        EntryPoints: [reminders.ts]
+        External: ['@aws-sdk/*']
+    Properties:
+      FunctionName: !Sub 'diary-reminders-cron-${Stage}'
+      CodeUri:      ../backend/src/functions/cron/
+      Handler:      reminders.handler
+      Timeout:      60
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref DiaryPushTable }
+        - SSMParameterReadPolicy: { ParameterName: diary/* }
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: 'cron(* * * * ? *)'
+            Name:     !Sub 'diary-reminders-${Stage}'
+            Enabled:  true
+
+# ── Outputs ───────────────────────────────────────────────────────────────
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint
+    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod'
+  CloudFrontUrl:
+    Description: CloudFront distribution URL
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (used for cache invalidation)
+    Value: !Ref CloudFrontDistribution
+  FrontendBucketName:
+    Description: S3 bucket for frontend assets
+    Value: !Ref FrontendBucket
+  DiaryMainTableName:
+    Value: !Ref DiaryMainTable
+  DiaryPushTableName:
+    Value: !Ref DiaryPushTable
