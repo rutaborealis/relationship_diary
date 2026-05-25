@@ -5,64 +5,155 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm start           # production server
-npm run dev         # server with auto-restart on file changes (node --watch)
-npm run generate-vapid   # generate VAPID keys for push notifications
-node generate-icons.js   # regenerate PWA icons from favicon.svg
+# Frontend
+cd frontend && npm run dev       # Vite dev server (proxies /api → localhost:3000)
+cd frontend && npm run build     # TypeScript check + Vite build → frontend/dist/
+cd frontend && npm run typecheck # tsc --noEmit
+
+# Backend
+npm run local                    # Express wrapper for Lambda handlers (ts-node)
+npm run setup-local-dynamo       # Create tables in DynamoDB Local (Docker)
+
+# Deploy
+bash scripts/deploy-frontend.sh  # build frontend + sync S3 + invalidate CloudFront
+bash scripts/deploy-backend.sh   # sam build + sam deploy
+bash scripts/deploy.sh           # both frontend + backend
+
+# Infra
+npm run generate-vapid           # generate new VAPID key pair
 ```
 
-No build step, no bundler, no tests, no linter configured.
+## Project structure
+
+```
+relationship_diary/
+├── frontend/                    # React + Vite PWA
+│   ├── src/
+│   │   ├── api/index.ts         # All API calls (single request() helper)
+│   │   ├── store/index.ts       # Zustand stores (auth + UI toasts)
+│   │   ├── types/index.ts       # Shared TypeScript interfaces
+│   │   ├── pages/
+│   │   │   ├── auth/            # LoginPage, RegisterPage, VerifyEmailPage
+│   │   │   └── app/             # TodayPage, PartnerPage, CalendarPage,
+│   │   │                        #   DayPage, QualitiesPage, SettingsPage
+│   │   ├── components/
+│   │   │   ├── layout/          # PageLayout, BottomNav
+│   │   │   └── ui/              # Textarea, Input, Loader, Toast
+│   │   ├── index.css            # All styles (CSS variables, no Tailwind utilities)
+│   │   ├── App.tsx              # React Router, JWT validation, invite token flow
+│   │   └── main.tsx             # SW registration, invite token capture
+│   └── public/
+│       └── sw.js                # Service worker (push only — no caching)
+├── backend/
+│   ├── src/
+│   │   ├── functions/           # One file per Lambda handler
+│   │   │   ├── auth/            # register, verify-email, login, me
+│   │   │   ├── entries/         # get, save, delete, calendar
+│   │   │   ├── users/           # search
+│   │   │   ├── partners/        # invite, accept, pending
+│   │   │   ├── push/            # vapid-key, subscribe, settings, reminder, notify-partner
+│   │   │   └── cron/            # reminders (EventBridge every minute)
+│   │   └── lib/                 # dynamo, auth-middleware, errors, jwt, ses, ssm, webpush
+│   └── config/app.config.ts     # Centralised config (table names, JWT, SES, VAPID params)
+├── infra/
+│   └── template.yaml            # AWS SAM — all Lambda + DynamoDB + S3 + CloudFront
+└── scripts/
+    ├── deploy.sh / deploy-frontend.sh / deploy-backend.sh
+    ├── local-server.ts          # Express wrapper that calls Lambda handlers directly
+    └── setup-local-dynamo.ts    # Creates DynamoDB Local tables for dev
+```
 
 ## Architecture
 
-This is a **couples relationship diary** — a PWA for exactly 2 users. It is a vanilla JS SPA served by an Express static server.
+**Couples diary PWA** — private app for exactly 2 users.
 
-### Two operating modes
+**Frontend:** React 18 + Vite + React Router v6. Zustand for state (jwt, user, partner persisted to `localStorage`). CSS custom variables — no Tailwind utility classes.
 
-`CFG.DEMO` in `public/app.js` controls which backend is used:
+**Backend:** AWS Lambda (Node.js 22.x, ARM64). TypeScript → esbuild (via SAM `BuildMethod: esbuild`). No bundled `@aws-sdk/*` (provided by Lambda runtime).
 
-- **`DEMO: true`** (default) — uses an in-memory localStorage database (`LocalDB`/`QueryBuilder`). No Supabase needed. Push notifications are disabled. Demo users "Рута" and "Женя" are auto-seeded.
-- **`DEMO: false`** — uses a real Supabase instance. Requires filling `CFG.SUPABASE_URL` and `CFG.SUPABASE_KEY` in `public/app.js`, plus `.env` for the server.
+**Storage:** DynamoDB Single Table Design (`DiaryMain`). Separate `DiaryPush` table for push subscriptions + reminder times.
 
-### Files
+**Delivery:** S3 (static) + CloudFront (CDN). CloudFront path `/api/*` → API Gateway → Lambda. All other paths → S3 bucket.
 
-- **`server.js`** — Express server. Serves `public/` as static files. Three API routes:
-  - `GET /api/vapid-public-key` — returns VAPID public key to the frontend
-  - `POST /api/subscribe` — saves/updates a push subscription in Supabase
-  - `POST /api/notify-partner` — sends a push to the partner when a diary entry is saved (idempotent per day via `notification_log`)
-  - Cron job (every minute): sends reminder pushes to users who set a `reminder_time` and haven't filled their entry today
+**Email:** Resend (not AWS SES). Lambda → `ses.ts` lib which calls Resend API.
 
-- **`public/app.js`** — entire frontend in one IIFE. Key sections:
-  - `CFG` — config constants (DEMO flag, Supabase credentials, mood levels, Russian month/day names, `DB_VERSION`)
-  - `QueryBuilder` / `createLocalDb()` — localStorage-backed DB that mirrors the Supabase JS client API (`.from().select().eq().upsert()` etc.)
-  - `S` — global mutable state (current user, partner, active view, current date, form data)
-  - `render()` / `navigate(view)` — re-renders the entire view on every navigation
-  - View functions: `renderToday`, `renderPartner`, `renderCalendar`, `renderQualities`, `renderSettings`
-  - Push helpers: `enablePush`, `disablePush`, `notifyPartner`
+**Push:** Web Push (VAPID). VAPID keys in SSM Parameter Store. `notify-partner` is idempotent per `(sender, recipient, date, type)`.
 
-- **`supabase-setup.sql`** — full DB schema: `users`, `entries`, `qualities`, `push_subscriptions`, `notification_log`. RLS is disabled (private app).
+## DynamoDB schema (DiaryMain table)
 
-- **`public/sw.js`** — service worker for PWA caching and push notification display.
+| Entity | PK | SK | Key attributes |
+|--------|----|----|----------------|
+| User profile | `USER#<id>` | `PROFILE` | email, name, gender, passwordHash, emailVerified, partnerId |
+| Email lookup | `EMAIL#<email>` | `USER` | userId |
+| Diary entry | `USER#<id>` | `ENTRY#<YYYY-MM-DD>` | mood_level, mood_text, noticed_1/2/3, gratitude_1/2/3, closeness_text, note_to_partner, free_thought |
+| Quality | `USER#<id>` | `QUALITY#<id>` | text, created_at |
+| Notification log | `USER#<senderId>` | `NOTIF#<recipId>#<date>#<type>` | sent_at |
+| Partner invite | `INVITE#<token>` | `META` | senderId, recipientEmail, status — TTL 72h |
+| Email verify code | `VERIFY#<email>` | `CODE` | code — TTL 15 min |
 
-### Key design decisions
+**GSI EmailIndex** on `email` field → used for user search by email.
 
-**LocalDB mirrors Supabase API exactly** so `app.js` calls `S.db.from('entries').select(...)` identically regardless of mode. The `QueryBuilder` class implements `.eq()`, `.in()`, `.gte()`, `.lte()`, `.order()`, `.insert()`, `.upsert()`, `.update()`, `.delete()`, `.maybeSingle()`, `.single()`.
+**DiaryPush table:** PK = `userId`. Fields: `subscription` (JSON object), `reminder_time` (HH:MM string).  
+**GSI ReminderTimeIndex:** PK = `reminder_time` → used by cron to find users to remind.
 
-**`DB_VERSION` in `CFG`** — bump this string whenever the localStorage schema changes to force-clear all local data on the user's next page load.
+## Key design decisions
 
-**`entries.free_thought`** is intentionally private — the partner view (`renderPartner`) never displays it.
+**`entries.free_thought`** is private — `DayPage` and `PartnerPage` never show it when viewing partner's entry. Only visible in own entry view.
 
-**`entries.note_to_partner`** is readable by the partner in `renderPartner`.
+**`entries.note_to_partner`** is shared — partner sees it in read-only view.
 
-**User identity** is persisted as `localStorage['diary_user_id']`. Gender determines the color theme (`theme-m` CSS class on `<body>` for male users).
+**Auth flow:**
+1. Register → 6-digit email code (Resend) → verify → JWT
+2. JWT stored in Zustand (localStorage). On mount `App.tsx` calls `/api/auth/me` to validate.
+3. `401` → auto-logout.
 
-**The app supports exactly 2 users.** `loadPartner()` finds the one user whose `id !== S.userId`. The setup flow gates the second user's creation until the first exists.
+**Partner invite flow:**
+- Inviter: search by name/email → click invite → backend sends email with `?token=X` link
+- Invitee opens link → token saved to `sessionStorage` in `main.tsx` (before React mounts, before any auth redirect)
+- After login: `App.tsx` `useEffect([jwt])` reads token from `sessionStorage`, calls `acceptInvite`
 
-**Push notification idempotency** — `notification_log` prevents duplicate pushes per `(sender_id, recipient_id, date, type)`.
+**Calendar → DayPage:** Clicking a day cell in `CalendarPage` navigates to `/day/YYYY-MM-DD`. `DayPage` loads both own entry and partner entry for that date. Tab switcher: "Моя запись" / partner name. "Редактировать" button navigates to `/today` with `state: { date }`.
 
-### Switching to real Supabase
+**TodayPage date navigation:** reads initial date from `location.state?.date` (set by DayPage) or defaults to today. Prev/next arrows; "К сегодня" button for past dates.
 
-1. Run `supabase-setup.sql` in Supabase SQL Editor
-2. Generate VAPID keys: `npm run generate-vapid`
-3. Fill `.env` (copy from `.env.example`)
-4. In `public/app.js`, set `CFG.DEMO = false` and fill `CFG.SUPABASE_URL` / `CFG.SUPABASE_KEY`
+**Push notifications:**
+- VAPID public key: retrieved from `/api/vapid-public-key` (SSM backed)
+- Subscription created via `navigator.serviceWorker.ready` + `pushManager.subscribe({ applicationServerKey: key })` — key passed as URL-base64 string directly (not converted to Uint8Array)
+- After successful save in `TodayPage`, `api.notifyPartner(date)` is called fire-and-forget
+- Idempotent: one notification per day per sender/recipient pair
+
+**Gender theme:** `body.className = user.gender === 'm' ? 'theme-m' : ''`. CSS variables differ: female = pink accent (`--accent-a`), male = blue accent (`--accent-b`). Set in `App.tsx`.
+
+**Qualities:** backend returns array directly (not `{ qualities: [] }`). Items have `id` field (not `qualityId`).
+
+**Calendar:** backend returns `Record<string, { mine?: boolean; theirs?: boolean }>` sparse map (0-based month). Frontend sends `month - 1` to API, builds full grid in `buildGrid()`.
+
+## SSM parameters (production)
+
+```
+/diary/jwt-secret          SecureString
+/diary/vapid-public-key    SecureString
+/diary/vapid-private-key   SecureString
+/diary/vapid-email         String
+/diary/resend-api-key      SecureString
+```
+
+## Local development
+
+```bash
+docker compose up -d          # DynamoDB Local on :8000
+npm run setup-local-dynamo    # create tables
+npm run local                 # Express wrapper on :3000
+cd frontend && npm run dev    # Vite on :5173 (proxies /api → :3000)
+```
+
+Set `frontend/.env.local` to `VITE_API_BASE=` (empty) to use Vite proxy.  
+Set `.env.local` (root) with `DYNAMO_ENDPOINT`, `JWT_SECRET`, `RESEND_API_KEY`, etc.
+
+## Production URLs
+
+- App: https://ourdiary.love (CloudFront)
+- API: https://ourdiary.love/api/* → API Gateway (eu-central-1)
+- S3 bucket: `diary-frontend-prod-049710942442`
+- CloudFront distribution: `E1RZUG10DIC91S`
+- SAM stack: `relationship-diary` (eu-central-1)

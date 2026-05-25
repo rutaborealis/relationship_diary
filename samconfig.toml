@@ -1,0 +1,16 @@
+version = 0.1
+
+[default.build.parameters]
+template_file = "infra/template.yaml"
+
+[default.deploy.parameters]
+stack_name          = "relationship-diary"
+region              = "eu-central-1"
+capabilities        = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+s3_bucket           = "diary-sam-artifacts"
+s3_prefix           = "relationship-diary"
+parameter_overrides = "AppDomain=https://ourdiary.love SesFromAddress=noreply@ourdiary.love DomainName=ourdiary.love CertificateArn=arn:aws:acm:us-east-1:049710942442:certificate/16030156-0ef2-4cf4-8173-4781b7139973"
+
+[dev.deploy.parameters]
+stack_name          = "relationship-diary-dev"
+parameter_overrides = "Stage=dev AppDomain= SesFromAddress=evgeniy.kvasyuk@gmail.com"

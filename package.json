@@ -1,20 +1,43 @@
 {
-  "name": "couples-diary",
-  "version": "1.0.0",
+  "name": "couples-diary-root",
+  "version": "2.0.0",
   "description": "Дневник для двоих",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "generate-vapid": "node -e \"const wp=require('web-push');const k=wp.generateVAPIDKeys();console.log('VAPID_PUBLIC_KEY='+k.publicKey+'\\nVAPID_PRIVATE_KEY='+k.privateKey)\""
+    "local": "NODE_ENV=local ts-node scripts/local-server.ts",
+    "setup-local-dynamo": "ts-node scripts/setup-local-dynamo.ts",
+    "generate-vapid": "ts-node scripts/generate-vapid.ts",
+    "typecheck": "tsc -p backend/tsconfig.json --noEmit && cd frontend && npm run typecheck",
+    "build": "sam build",
+    "deploy": "bash scripts/deploy.sh",
+    "deploy:frontend": "bash scripts/deploy-frontend.sh",
+    "deploy:backend": "bash scripts/deploy-backend.sh",
+    "deploy:dev": "sam build && sam deploy --parameter-overrides Stage=dev"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-ses": "^3.0.0",
+    "@aws-sdk/client-ssm": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "node-cron": "^3.0.3",
-    "sharp": "^0.34.5",
+    "jsonwebtoken": "^9.0.2",
+    "resend": "^6.12.3",
+    "uuid": "^9.0.0",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^9.0.7",
+    "@types/web-push": "^3.6.3",
+    "sharp": "^0.34.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.0"
   }
 }
