@@ -6,10 +6,11 @@ import { useAuthStore, useUIStore } from '../../store';
 import { BottomNav } from '../../components/layout/BottomNav';
 import { ToastContainer } from '../../components/ui/Toast';
 import { Loader } from '../../components/ui/Loader';
+import { MoodIcon } from '../../components/ui/MoodIcon';
 import type { Entry } from '../../types';
 
 const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
-const MOODS: Record<string, string> = { good: '😊 Хорошее', ok: '😐 Нормальное', bad: '😔 Плохое' };
+const MOODS: Record<string, string> = { good: 'Хорошее', ok: 'Нормальное', bad: 'Плохое' };
 
 function formatDate(dateStr: string) {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -18,8 +19,8 @@ function formatDate(dateStr: string) {
 
 function isEntryEmpty(e: Partial<Entry> | null) {
   if (!e) return true;
-  return !e.mood_level && !e.mood_text && !e.noticed_1 && !e.noticed_2 && !e.noticed_3
-    && !e.gratitude_1 && !e.gratitude_2 && !e.gratitude_3
+  return !e.mood_level && !e.mood_text && !e.noticed_1 && !e.noticed_2 && !e.noticed_3 && !e.noticed_4 && !e.noticed_5
+    && !e.gratitude_1 && !e.gratitude_2 && !e.gratitude_3 && !e.gratitude_4 && !e.gratitude_5
     && !e.closeness_text && !e.note_to_partner && !e.free_thought;
 }
 
@@ -30,8 +31,8 @@ interface EntryViewProps {
 }
 
 function EntryView({ entry, isMine, partnerName }: EntryViewProps) {
-  const noticed  = [entry.noticed_1,  entry.noticed_2,  entry.noticed_3 ].filter(Boolean);
-  const gratitude= [entry.gratitude_1, entry.gratitude_2, entry.gratitude_3].filter(Boolean);
+  const noticed  = [entry.noticed_1,  entry.noticed_2,  entry.noticed_3,  entry.noticed_4,  entry.noticed_5 ].filter(Boolean);
+  const gratitude= [entry.gratitude_1, entry.gratitude_2, entry.gratitude_3, entry.gratitude_4, entry.gratitude_5].filter(Boolean);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -39,7 +40,10 @@ function EntryView({ entry, isMine, partnerName }: EntryViewProps) {
         <div className="card">
           <p className="entry-field-label">Настроение</p>
           {entry.mood_level && (
-            <p className="entry-field-value">{MOODS[entry.mood_level] ?? entry.mood_level}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ width: 32, height: 32, display: 'block', flexShrink: 0 }}><MoodIcon type={entry.mood_level} /></span>
+              <p className="entry-field-value" style={{ margin: 0 }}>{MOODS[entry.mood_level] ?? entry.mood_level}</p>
+            </div>
           )}
           {entry.mood_text && (
             <p className="entry-field-value" style={{ marginTop: entry.mood_level ? '6px' : 0 }}>

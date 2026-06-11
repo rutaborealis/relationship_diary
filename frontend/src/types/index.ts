@@ -18,9 +18,13 @@ export interface Entry {
   noticed_1: string | null;
   noticed_2: string | null;
   noticed_3: string | null;
+  noticed_4: string | null;
+  noticed_5: string | null;
   gratitude_1: string | null;
   gratitude_2: string | null;
   gratitude_3: string | null;
+  gratitude_4: string | null;
+  gratitude_5: string | null;
   gratitude_said: boolean;
   closeness_text: string | null;
   note_to_partner: string | null;

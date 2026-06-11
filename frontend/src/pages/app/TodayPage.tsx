@@ -6,12 +6,13 @@ import { useUIStore } from '../../store';
 import { PageLayout } from '../../components/layout/PageLayout';
 import { Textarea } from '../../components/ui/Textarea';
 import { Loader } from '../../components/ui/Loader';
+import { MoodIcon } from '../../components/ui/MoodIcon';
 import type { Entry } from '../../types';
 
 const MOODS = [
-  { key: 'good', label: '😊 Хорошее'   },
-  { key: 'ok',   label: '😐 Нормальное' },
-  { key: 'bad',  label: '😔 Плохое'    },
+  { key: 'good', label: 'Хорошее'   },
+  { key: 'ok',   label: 'Нормальное' },
+  { key: 'bad',  label: 'Плохое'    },
 ];
 
 const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
@@ -36,8 +37,8 @@ function addDays(dateStr: string, n: number) {
 }
 
 function isEntryEmpty(e: Partial<Entry>) {
-  return !e.mood_level && !e.mood_text && !e.noticed_1 && !e.noticed_2 && !e.noticed_3
-    && !e.gratitude_1 && !e.gratitude_2 && !e.gratitude_3
+  return !e.mood_level && !e.mood_text && !e.noticed_1 && !e.noticed_2 && !e.noticed_3 && !e.noticed_4 && !e.noticed_5
+    && !e.gratitude_1 && !e.gratitude_2 && !e.gratitude_3 && !e.gratitude_4 && !e.gratitude_5
     && !e.closeness_text && !e.note_to_partner && !e.free_thought;
 }
 
@@ -154,7 +155,7 @@ export function TodayPage() {
           {/* Mood */}
           <div className="card">
             <p className="card-label">Настроение</p>
-            <div className="mood-tags">
+            <div className="mood-tags" style={{ marginBottom: '12px' }}>
               {MOODS.map((m) => (
                 <button
                   key={m.key}
@@ -162,6 +163,7 @@ export function TodayPage() {
                   className={`mood-tag${entry.mood_level === m.key ? ' selected' : ''}`}
                   onClick={() => setEntry((e) => ({ ...e, mood_level: m.key }))}
                 >
+                  <span style={{ width: 36, height: 36, display: 'block' }}><MoodIcon type={m.key} /></span>
                   {m.label}
                 </button>
               ))}
@@ -173,10 +175,10 @@ export function TodayPage() {
           <div className="card">
             <p className="card-label">Что заметил(а) в партнёре</p>
             <div className="noticed-list">
-              {(['noticed_1', 'noticed_2', 'noticed_3'] as const).map((f, i) => (
+              {(['noticed_1', 'noticed_2', 'noticed_3', 'noticed_4', 'noticed_5'] as const).map((f, i) => (
                 <div key={f} className="noticed-item">
                   <span className="noticed-num">{i + 1}</span>
-                  <input className="input" style={{ paddingLeft: '28px' }} value={entry[f] ?? ''} onChange={update(f)} placeholder={`${i + 1}...`} />
+                  <input className="input" style={{ paddingLeft: '28px' }} value={entry[f] ?? ''} onChange={update(f)} placeholder="..." />
                 </div>
               ))}
             </div>
@@ -186,10 +188,10 @@ export function TodayPage() {
           <div className="card">
             <p className="card-label">За что благодарен(а)</p>
             <div className="noticed-list">
-              {(['gratitude_1', 'gratitude_2', 'gratitude_3'] as const).map((f, i) => (
+              {(['gratitude_1', 'gratitude_2', 'gratitude_3', 'gratitude_4', 'gratitude_5'] as const).map((f, i) => (
                 <div key={f} className="noticed-item">
                   <span className="noticed-num">{i + 1}</span>
-                  <input className="input" style={{ paddingLeft: '28px' }} value={entry[f] ?? ''} onChange={update(f)} placeholder={`${i + 1}...`} />
+                  <input className="input" style={{ paddingLeft: '28px' }} value={entry[f] ?? ''} onChange={update(f)} placeholder="..." />
                 </div>
               ))}
             </div>
