@@ -5,7 +5,7 @@ STACK_NAME="relationship-diary"
 REGION="eu-central-1"
 
 echo "==> Building frontend..."
-cd frontend && npm run build && cd ..
+( cd frontend && npm run build )
 
 echo "==> Building Lambda functions..."
 sam build
