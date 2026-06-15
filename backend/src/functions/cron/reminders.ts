@@ -31,8 +31,9 @@ export const handler = async (): Promise<void> => {
   for (const sub of subs) {
     const userId = sub.userId as string;
 
-    const entry = await getItem(MAIN, { PK: `USER#${userId}`, SK: `ENTRY#${today}` });
-    if (entry) continue;
+    // The reminder is an explicit user request — fire it at the chosen time
+    // regardless of whether an entry already exists (entries can be edited /
+    // supplemented all day). Only the per-time dedup below prevents duplicates.
 
     // Dedup per (day + time): including currentTime lets a same-day time change
     // re-arm the reminder, while still firing at most once per day per time.
