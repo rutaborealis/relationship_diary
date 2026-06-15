@@ -34,7 +34,9 @@ export const handler = async (): Promise<void> => {
     const entry = await getItem(MAIN, { PK: `USER#${userId}`, SK: `ENTRY#${today}` });
     if (entry) continue;
 
-    const logKey = { PK: `USER#${userId}`, SK: `NOTIF#${userId}#${today}#reminder` };
+    // Dedup per (day + time): including currentTime lets a same-day time change
+    // re-arm the reminder, while still firing at most once per day per time.
+    const logKey = { PK: `USER#${userId}`, SK: `NOTIF#${userId}#${today}#reminder#${currentTime}` };
     const logged = await getItem(MAIN, logKey);
     if (logged) continue;
 
