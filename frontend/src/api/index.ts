@@ -71,7 +71,7 @@ export const api = {
   subscribe: (subscription: any) =>
     request<{ message: string }>('POST', '/api/subscribe', { subscription }),
   setReminder: (time: string | null) =>
-    request<{ message: string }>('POST', '/api/reminder', { time }),
+    request<{ message: string }>('POST', '/api/reminder', { reminderTime: time }),
   notifyPartner: (date: string) =>
     request<{ message: string }>('POST', '/api/notify-partner', { date }),
 };

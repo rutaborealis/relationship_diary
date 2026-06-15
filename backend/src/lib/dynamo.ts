@@ -45,22 +45,33 @@ export async function updateItem(
   Key: Record<string, unknown>,
   updates: Record<string, unknown>,
 ) {
-  const expr: string[] = [];
+  const setExpr: string[] = [];
+  const removeExpr: string[] = [];
   const names: Record<string, string> = {};
   const values: Record<string, unknown> = {};
 
+  // null/undefined → REMOVE the attribute (DynamoDB rejects NULL on a GSI key,
+  // e.g. reminder_time on ReminderTimeIndex). Absent attribute = out of the index.
   for (const [k, v] of Object.entries(updates)) {
-    expr.push(`#${k} = :${k}`);
     names[`#${k}`] = k;
-    values[`:${k}`] = v;
+    if (v === null || v === undefined) {
+      removeExpr.push(`#${k}`);
+    } else {
+      setExpr.push(`#${k} = :${k}`);
+      values[`:${k}`] = v;
+    }
   }
+
+  const clauses: string[] = [];
+  if (setExpr.length) clauses.push(`SET ${setExpr.join(', ')}`);
+  if (removeExpr.length) clauses.push(`REMOVE ${removeExpr.join(', ')}`);
 
   await db.send(new UpdateCommand({
     TableName,
     Key,
-    UpdateExpression: `SET ${expr.join(', ')}`,
+    UpdateExpression: clauses.join(' '),
     ExpressionAttributeNames: names,
-    ExpressionAttributeValues: values,
+    ...(Object.keys(values).length ? { ExpressionAttributeValues: values } : {}),
   }));
 }
 

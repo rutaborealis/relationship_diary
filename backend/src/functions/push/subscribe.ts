@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { PUSH, putItem } from '../../lib/dynamo';
+import { PUSH, updateItem } from '../../lib/dynamo';
 import { requireAuth } from '../../lib/auth-middleware';
 import { ok, HttpError, withErrorHandling } from '../../lib/errors';
 
@@ -9,8 +9,8 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
 
   if (!subscription) throw new HttpError(400, 'Missing subscription');
 
-  await putItem(PUSH, {
-    userId,
+  // Partial update — must NOT clobber reminder_time on the same item (PK=userId).
+  await updateItem(PUSH, { userId }, {
     subscription,
     updated_at: new Date().toISOString(),
   });

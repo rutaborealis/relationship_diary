@@ -1,7 +1,7 @@
 import webpush from 'web-push';
 import { getParameter } from './ssm';
 import config from '../../config/app.config';
-import { PUSH, getItem, deleteItem } from './dynamo';
+import { PUSH, getItem, updateItem } from './dynamo';
 
 let vapidInitialized = false;
 
@@ -38,7 +38,9 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
   } catch (err: unknown) {
     const statusCode = (err as { statusCode?: number }).statusCode;
     if (statusCode === 410 || statusCode === 404) {
-      await deleteItem(PUSH, { userId });
+      // Stale subscription — drop only the subscription, keep reminder_time so
+      // the daily reminder survives (it'll fire again once the user re-subscribes).
+      await updateItem(PUSH, { userId }, { subscription: null });
     } else {
       console.error('Push send error:', (err as Error).message);
     }

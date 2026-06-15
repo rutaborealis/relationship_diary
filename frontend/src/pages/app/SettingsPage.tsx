@@ -8,6 +8,22 @@ import { useNavigate } from 'react-router-dom';
 
 type PushStatus = 'loading' | 'unsupported' | 'denied' | 'subscribed' | 'unsubscribed';
 
+// reminder_time is stored/compared in UTC by the cron (getUTCHours). The picker
+// shows local time, so convert on the way out/in. DST edges may drift ±1h — acceptable.
+function localToUtcHHMM(local: string): string {
+  const [h, m] = local.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+function utcToLocalHHMM(utc: string): string {
+  const [h, m] = utc.split(':').map(Number);
+  const d = new Date();
+  d.setUTCHours(h, m, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 export function SettingsPage() {
   const { user, partner, logout } = useAuthStore();
   const { addToast }              = useUIStore();
@@ -20,7 +36,7 @@ export function SettingsPage() {
   const [pushWorking, setPushWorking]   = useState(false);
 
   useEffect(() => {
-    api.getPushSettings().then((d) => setReminderTime(d.reminderTime ?? ''));
+    api.getPushSettings().then((d) => setReminderTime(d.reminderTime ? utcToLocalHHMM(d.reminderTime) : ''));
     checkPushStatus();
   }, []);
 
@@ -123,7 +139,7 @@ export function SettingsPage() {
 
   async function saveReminder() {
     try {
-      await api.setReminder(reminderTime || null);
+      await api.setReminder(reminderTime ? localToUtcHHMM(reminderTime) : null);
       addToast('success', 'Напоминание сохранено');
     } catch (err: any) {
       addToast('error', err.message);
