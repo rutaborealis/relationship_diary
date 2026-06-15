@@ -7,9 +7,12 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
   const { userId } = await requireAuth(event);
   const { reminderTime } = JSON.parse(event.body ?? '{}');
 
+  // Clearing last_reminded invalidates today's "already reminded" mark, so the
+  // new time fires cleanly today and the old time no longer counts as sent.
   await updateItem(PUSH, { userId }, {
     reminder_time: reminderTime ?? null,
     updated_at:    new Date().toISOString(),
+    last_reminded: null,
   });
 
   return ok({ ok: true });

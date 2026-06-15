@@ -1,5 +1,5 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
-import { MAIN, PUSH, db, getItem, putItem } from '../../lib/dynamo';
+import { PUSH, db, updateItem } from '../../lib/dynamo';
 import { sendPushToUser } from '../../lib/webpush';
 import config from '../../../config/app.config';
 
@@ -33,15 +33,12 @@ export const handler = async (): Promise<void> => {
 
     // The reminder is an explicit user request — fire it at the chosen time
     // regardless of whether an entry already exists (entries can be edited /
-    // supplemented all day). Only the per-time dedup below prevents duplicates.
+    // supplemented all day).
 
-    // Dedup per (day + time): including currentTime lets a same-day time change
-    // re-arm the reminder, while still firing at most once per day per time.
-    const logKey = { PK: `USER#${userId}`, SK: `NOTIF#${userId}#${today}#reminder#${currentTime}` };
-    const logged = await getItem(MAIN, logKey);
-    if (logged) continue;
-
-    await putItem(MAIN, { ...logKey, sent_at: new Date().toISOString() });
+    // Fire at most once per day. The mark lives on the push row; changing the
+    // reminder time clears it (push/reminder.ts), so a new time re-arms today.
+    if (sub.last_reminded === today) continue;
+    await updateItem(PUSH, { userId }, { last_reminded: today });
 
     await sendPushToUser(userId, {
       title: 'Дневник ждёт 📖',
