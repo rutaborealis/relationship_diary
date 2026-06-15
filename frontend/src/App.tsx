@@ -12,6 +12,7 @@ import { CalendarPage }    from './pages/app/CalendarPage';
 import { DayPage }         from './pages/app/DayPage';
 import { QualitiesPage }   from './pages/app/QualitiesPage';
 import { SettingsPage }    from './pages/app/SettingsPage';
+import { UpdateBanner }    from './components/UpdateBanner';
 
 function RequireAuth({ children }: { children: React.ReactElement }) {
   const jwt = useAuthStore((s) => s.jwt);
@@ -61,6 +62,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <UpdateBanner />
       <Routes>
         <Route path="/login"        element={<LoginPage />} />
         <Route path="/register"     element={<RegisterPage />} />

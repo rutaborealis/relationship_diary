@@ -19,8 +19,15 @@ CF_ID=$(aws cloudformation describe-stacks \
   --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
   --output text)
 
-echo "==> Uploading frontend to s3://$BUCKET ..."
-aws s3 sync frontend/dist/ "s3://$BUCKET/" --delete --region "$REGION"
+echo "==> Uploading hashed assets (immutable, long cache)..."
+aws s3 sync frontend/dist/ "s3://$BUCKET/" --delete --region "$REGION" \
+  --cache-control "public, max-age=31536000, immutable" \
+  --exclude "index.html" --exclude "sw.js" --exclude "manifest.json" --exclude "version.json"
+
+echo "==> Uploading entrypoints (no-cache, always revalidate)..."
+aws s3 sync frontend/dist/ "s3://$BUCKET/" --region "$REGION" \
+  --cache-control "no-cache" \
+  --exclude "*" --include "index.html" --include "sw.js" --include "manifest.json" --include "version.json"
 
 echo "==> Invalidating CloudFront cache ($CF_ID)..."
 aws cloudfront create-invalidation \
