@@ -13,6 +13,7 @@ import { DayPage }         from './pages/app/DayPage';
 import { QualitiesPage }   from './pages/app/QualitiesPage';
 import { SettingsPage }    from './pages/app/SettingsPage';
 import { UpdateBanner }    from './components/UpdateBanner';
+import { clearAppBadge }   from './lib/badge';
 
 function RequireAuth({ children }: { children: React.ReactElement }) {
   const jwt = useAuthStore((s) => s.jwt);
@@ -27,6 +28,14 @@ export default function App() {
   useEffect(() => {
     document.body.className = user?.gender === 'm' ? 'theme-m' : '';
   }, [user?.gender]);
+
+  // Clear the app-icon badge when the app is opened/focused — user has seen it.
+  useEffect(() => {
+    const clear = () => { if (document.visibilityState === 'visible') clearAppBadge(); };
+    clear();
+    document.addEventListener('visibilitychange', clear);
+    return () => document.removeEventListener('visibilitychange', clear);
+  }, []);
 
   // Validate JWT on mount
   useEffect(() => {
