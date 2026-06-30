@@ -93,9 +93,13 @@ function kmsBackend(): EnvelopeBackend {
  * The wrapped blob packs iv(12) | tag(16) | ciphertext, base64-encoded.
  */
 function localBackend(): EnvelopeBackend {
-  const DEFAULT_DEV_KEY = 'diary-local-dev-master-key-do-not-use-in-prod';
+  // No default key: local mode must provide an explicit master key so a
+  // publicly-known fallback can never wrap real data (SEC-2).
+  if (!config.crypto.localMasterKey) {
+    throw new Error('content-encryption: set LOCAL_ENC_KEY for local KMS mode');
+  }
   const masterKey = createHash('sha256')
-    .update(config.crypto.localMasterKey || DEFAULT_DEV_KEY)
+    .update(config.crypto.localMasterKey)
     .digest(); // always 32 bytes regardless of input format
 
   return {
@@ -117,6 +121,17 @@ function localBackend(): EnvelopeBackend {
       return Buffer.concat([decipher.update(ct), decipher.final()]);
     },
   };
+}
+
+// Fail-fast against silent fake-KMS in production (SEC-1): if STAGE=prod, refuse
+// to start when local mode is on (stray KMS_LOCAL/DYNAMO_ENDPOINT) or no CMK is
+// configured — never silently encrypt prod data with a local key.
+if (config.app.stage === 'prod' && (config.crypto.localMode || !config.crypto.kmsKeyId)) {
+  throw new Error(
+    'content-encryption misconfiguration: production stage requires KMS — ' +
+    'set KMS_KEY_ID and do NOT set KMS_LOCAL/DYNAMO_ENDPOINT. ' +
+    'Refusing to use local fake-KMS in prod.',
+  );
 }
 
 const backend: EnvelopeBackend = config.crypto.localMode ? localBackend() : kmsBackend();

@@ -59,9 +59,16 @@ AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-9, AC-10, AC-12 + qualities encrypt
 |---|---|---|
 | `KMS_KEY_ID` | env (prod) — `!Ref DiaryContentKey` из template.yaml | id/arn CMK для envelope. Инъектируется только в функции с KMS-IAM (глобальный env, остальные его не используют). |
 | `KMS_LOCAL` | env (local) | `=1` форсит fake-KMS. Автоматически вкл. при `DYNAMO_ENDPOINT`. |
-| `LOCAL_ENC_KEY` | env (local, dev-only) | мастер-ключ, оборачивающий DEK локально (любая строка → SHA-256 → 32 байта). Должен быть стабилен между прогонами/миграцией, иначе ранее зашифрованные локальные строки не расшифруются. Есть дефолтный dev-ключ, если не задан. |
+| `LOCAL_ENC_KEY` | env (local, **обязателен** в local-режиме) | мастер-ключ, оборачивающий DEK локально (любая строка → SHA-256 → 32 байта). Дефолтного ключа больше нет (SEC-2): без `LOCAL_ENC_KEY` крипто-либа падает на старте. Должен быть стабилен между прогонами/миграцией, иначе ранее зашифрованные локальные строки не расшифруются. |
+| `STAGE` | env (уже есть, `!Ref Stage` в template.yaml) | признак прод-стейджа для fail-fast guard (SEC-1). В проде `STAGE=prod`. Новых проброса не потребовалось. |
 
 Новых SSM-параметров не требуется: CMK создаётся в стеке, `KMS_KEY_ID` — `!Ref`, не SSM. Existing `SSMParameterReadPolicy` не трогался.
+
+## Security-review findings (закрыто)
+- `[SEC-1]` (medium) **Guard против fake-KMS в проде.** `backend/src/lib/crypto.ts`: перед выбором envelope-бэкенда — fail-fast. Если `config.app.stage === 'prod'` и при этом `localMode === true` (случайные `KMS_LOCAL`/`DYNAMO_ENDPOINT`) ИЛИ пустой `kmsKeyId` → бросается явная ошибка инициализации («production stage requires KMS — set KMS_KEY_ID, do NOT set KMS_LOCAL/DYNAMO_ENDPOINT»). Прод не может молча выбрать `localBackend()`. Использован уже существующий `STAGE` (из `config.app.stage` / `!Ref Stage`), нового env не заводил. template.yaml не менялся.
+- `[SEC-2]` (low) **Убран захардкоженный dev-fallback мастер-ключ.** `localBackend()` больше не имеет `DEFAULT_DEV_KEY`; при отсутствии `LOCAL_ENC_KEY` бросает «set LOCAL_ENC_KEY for local KMS mode». В бандл публично известный ключ не попадает.
+
+Проверено: typecheck зелёный; guard-матрица (local+key=OK; local без key=throw; prod+KMS_LOCAL=throw; prod без kmsKeyId=throw; prod+kmsKeyId=init OK, идёт в реальный KMS). Формат хранения, контракты API и приватность не затронуты.
 
 ## Отклонения от spec
 - `[SPEC-DEVIATION]` Сигнатура `encryptField` расширена до `Promise<EncBlob | string | null | undefined>` (spec: `EncBlob | null | undefined`), а `decryptField` возвращает `string | null` (для `null`/`undefined` входа → `null`, а не passthrough `undefined`). Причина: честный passthrough пустой строки/legacy требует возврата исходного значения, а строгий `string | null` для decrypt проще и безопаснее (отсутствующие поля и так не попадают в объект и не дешифруются). На контракты API/формат хранения не влияет.
