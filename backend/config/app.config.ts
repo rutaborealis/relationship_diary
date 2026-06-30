@@ -42,6 +42,13 @@ const config = {
     verificationCodeTtlMin: 15,
     inviteTokenTtlHours:    72,
     bcryptSaltRounds:       12,
+    // Password reset (see docs/features/password-reset)
+    resetCodeLength:        6,
+    resetCodeTtlMin:        15,
+    resetMaxAttempts:       5,
+    resetRateLimitPerHour:  5,
+    // Anti-enumeration: request-reset always answers in ~constant time (ms).
+    resetResponseFloorMs:   600,
   },
 
   app: {
