@@ -16,7 +16,7 @@
 ## 🚧 В работе
 | Фича (slug) | Этап | Статус | Следующий шаг | Ждёт PO |
 |---|---|---|---|---|
-| _пусто_ | | | | |
+| password-reset | analyze | in_progress | `/analyze password-reset` | — |
 
 ---
 
@@ -30,4 +30,4 @@
 ## ✅ Готово
 | Фича (slug) | Завершена | Артефакты |
 |---|---|---|
-| _пусто_ | | |
+| content-encryption | 2026-06-30 | задеплоено в прод (KMS envelope), backfill выполнен; `docs/features/content-encryption/` |
