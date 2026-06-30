@@ -46,6 +46,9 @@ export function LoginPage() {
         </form>
 
         <p className="setup-link">
+          <Link to="/forgot-password">Забыли пароль?</Link>
+        </p>
+        <p className="setup-link">
           Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
         </p>
       </div>

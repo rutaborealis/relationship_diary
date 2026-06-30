@@ -6,6 +6,8 @@ import { api } from './api';
 import { LoginPage }       from './pages/auth/LoginPage';
 import { RegisterPage }    from './pages/auth/RegisterPage';
 import { VerifyEmailPage } from './pages/auth/VerifyEmailPage';
+import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
+import { ResetPasswordPage }  from './pages/auth/ResetPasswordPage';
 import { TodayPage }       from './pages/app/TodayPage';
 import { PartnerPage }     from './pages/app/PartnerPage';
 import { CalendarPage }    from './pages/app/CalendarPage';
@@ -76,6 +78,8 @@ export default function App() {
         <Route path="/login"        element={<LoginPage />} />
         <Route path="/register"     element={<RegisterPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password"  element={<ResetPasswordPage />} />
 
         <Route path="/today"      element={<RequireAuth><TodayPage /></RequireAuth>} />
         <Route path="/partner"    element={<RequireAuth><PartnerPage /></RequireAuth>} />
