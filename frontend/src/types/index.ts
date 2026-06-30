@@ -29,6 +29,7 @@ export interface Entry {
   closeness_text: string | null;
   note_to_partner: string | null;
   free_thought: string | null;
+  shared: boolean | null;
   saved_at: string | null;
 }
 

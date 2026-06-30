@@ -8,6 +8,7 @@ const ALLOWED_FIELDS = new Set([
   'noticed_1', 'noticed_2', 'noticed_3', 'noticed_4', 'noticed_5',
   'gratitude_1', 'gratitude_2', 'gratitude_3', 'gratitude_4', 'gratitude_5', 'gratitude_said',
   'closeness_text', 'note_to_partner', 'free_thought',
+  'shared',
 ]);
 
 const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {

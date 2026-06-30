@@ -24,17 +24,20 @@ interface PushPayload {
   url?: string;
 }
 
-export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
+// Returns true only when the notification was actually handed off to the push
+// service, so callers can record idempotency/throttle markers based on real delivery.
+export async function sendPushToUser(userId: string, payload: PushPayload): Promise<boolean> {
   await initVapid();
 
   const row = await getItem(PUSH, { userId });
-  if (!row?.subscription) return;
+  if (!row?.subscription) return false;
 
   try {
     await webpush.sendNotification(
       row.subscription as webpush.PushSubscription,
       JSON.stringify(payload),
     );
+    return true;
   } catch (err: unknown) {
     const statusCode = (err as { statusCode?: number }).statusCode;
     if (statusCode === 410 || statusCode === 404) {
@@ -44,6 +47,7 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
     } else {
       console.error('Push send error:', (err as Error).message);
     }
+    return false;
   }
 }
 

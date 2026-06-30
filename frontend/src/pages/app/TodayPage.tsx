@@ -5,6 +5,7 @@ import { api } from '../../api';
 import { useUIStore } from '../../store';
 import { PageLayout } from '../../components/layout/PageLayout';
 import { Textarea } from '../../components/ui/Textarea';
+import { AutoTextarea } from '../../components/ui/AutoTextarea';
 import { Loader } from '../../components/ui/Loader';
 import { MoodIcon } from '../../components/ui/MoodIcon';
 import type { Entry } from '../../types';
@@ -48,7 +49,7 @@ export function TodayPage() {
   const [entry, setEntry]         = useState<Partial<Entry>>({});
   const [hasEntry, setHasEntry]   = useState(false);
   const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
+  const [saving, setSaving]       = useState<'draft' | 'send' | null>(null);
   const [deleting, setDeleting]   = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const { addToast }              = useUIStore();
@@ -75,17 +76,19 @@ export function TodayPage() {
       setEntry((prev) => ({ ...prev, [field]: e.target.value }));
   }
 
-  async function save() {
-    setSaving(true);
+  // share=false → черновик (партнёр не видит); share=true → финальная версия + пуш
+  async function save(share: boolean) {
+    setSaving(share ? 'send' : 'draft');
     try {
-      await api.saveEntry({ ...entry, date });
+      await api.saveEntry({ ...entry, date, shared: share });
+      setEntry((e) => ({ ...e, shared: share }));
       setHasEntry(!isEntryEmpty(entry));
-      addToast('success', 'Запись сохранена');
-      api.notifyPartner(date).catch(() => {});
+      addToast('success', share ? 'Отправлено партнёру' : 'Черновик сохранён');
+      if (share) api.notifyPartner(date).catch(() => {});
     } catch (err: any) {
       addToast('error', err.message ?? 'Ошибка сохранения');
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   }
 
@@ -178,7 +181,7 @@ export function TodayPage() {
               {(['noticed_1', 'noticed_2', 'noticed_3', 'noticed_4', 'noticed_5'] as const).map((f, i) => (
                 <div key={f} className="noticed-item">
                   <span className="noticed-num">{i + 1}</span>
-                  <input className="input" style={{ paddingLeft: '28px' }} value={entry[f] ?? ''} onChange={update(f)} placeholder="..." />
+                  <AutoTextarea className="input" style={{ paddingLeft: '28px' }} value={entry[f] ?? ''} onChange={update(f)} placeholder="..." />
                 </div>
               ))}
             </div>
@@ -191,7 +194,7 @@ export function TodayPage() {
               {(['gratitude_1', 'gratitude_2', 'gratitude_3', 'gratitude_4', 'gratitude_5'] as const).map((f, i) => (
                 <div key={f} className="noticed-item">
                   <span className="noticed-num">{i + 1}</span>
-                  <input className="input" style={{ paddingLeft: '28px' }} value={entry[f] ?? ''} onChange={update(f)} placeholder="..." />
+                  <AutoTextarea className="input" style={{ paddingLeft: '28px' }} value={entry[f] ?? ''} onChange={update(f)} placeholder="..." />
                 </div>
               ))}
             </div>
@@ -213,13 +216,45 @@ export function TodayPage() {
               <label className="field-label" style={{ margin: 0 }}>Свободная мысль</label>
               <span className="private-tag">только для тебя</span>
             </div>
-            <textarea className="textarea" value={entry.free_thought ?? ''} onChange={update('free_thought')} placeholder="Личные мысли..." rows={3} />
+            <AutoTextarea className="textarea" value={entry.free_thought ?? ''} onChange={update('free_thought')} placeholder="Личные мысли..." rows={3} />
           </div>
 
+          {/* Status */}
+          {hasEntry && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '-4px' }}>
+              {entry.shared === false ? (
+                <span style={{
+                  fontSize: '.7rem', fontWeight: 600, color: 'var(--text-soft)',
+                  background: 'var(--border)', padding: '3px 10px', borderRadius: '100px',
+                }}>Черновик — партнёр не видит</span>
+              ) : (
+                <span style={{
+                  fontSize: '.7rem', fontWeight: 600, color: 'var(--success)',
+                  background: '#EBF4EF', padding: '3px 10px', borderRadius: '100px',
+                }}>Отправлено партнёру</span>
+              )}
+            </div>
+          )}
+
           {/* Actions */}
-          <button className="btn-save" onClick={save} disabled={saving}>
-            {saving ? 'Сохранение...' : hasEntry ? 'Сохранить изменения' : 'Сохранить запись'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="btn-ghost"
+              onClick={() => save(false)}
+              disabled={!!saving}
+              style={{ flex: 1, padding: '14px' }}
+            >
+              {saving === 'draft' ? 'Сохранение...' : 'Сохранить черновик'}
+            </button>
+            <button
+              className="btn-save"
+              onClick={() => save(true)}
+              disabled={!!saving}
+              style={{ flex: 1 }}
+            >
+              {saving === 'send' ? 'Отправка...' : 'Сохранить и отправить'}
+            </button>
+          </div>
 
           {hasEntry && (
             <button

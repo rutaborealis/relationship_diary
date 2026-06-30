@@ -31,15 +31,19 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
       ? query(MAIN, {
           KeyConditionExpression: 'PK = :pk AND SK BETWEEN :from AND :to',
           ExpressionAttributeValues: { ':pk': `USER#${partnerId}`, ':from': `ENTRY#${from}`, ':to': `ENTRY#${to}` },
-          ProjectionExpression: '#d',
-          ExpressionAttributeNames: { '#d': 'date' },
+          ProjectionExpression: '#d, #sh',
+          ExpressionAttributeNames: { '#d': 'date', '#sh': 'shared' },
         })
       : Promise.resolve([]),
   ]);
 
   const calMap: Record<string, { mine?: boolean; theirs?: boolean }> = {};
   for (const r of myItems)      { calMap[r.date as string] = { ...calMap[r.date as string], mine:   true }; }
-  for (const r of partnerItems) { calMap[r.date as string] = { ...calMap[r.date as string], theirs: true }; }
+  // Unsent partner drafts (shared === false) stay hidden — no dot for them.
+  for (const r of partnerItems) {
+    if (r.shared === false) continue;
+    calMap[r.date as string] = { ...calMap[r.date as string], theirs: true };
+  }
 
   return ok(calMap);
 });

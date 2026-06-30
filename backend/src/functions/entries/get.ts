@@ -17,14 +17,21 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
       : Promise.resolve(null),
   ]);
 
-  // free_thought is private — never send it to client (partner view goes through /api/partner-entry)
-  const sanitize = (e: Record<string, unknown> | null) =>
-    e ? { ...e, free_thought: undefined, PK: undefined, SK: undefined } : null;
+  const stripKeys = (e: Record<string, unknown> | null): Record<string, unknown> | null =>
+    e ? { ...e, PK: undefined, SK: undefined } : null;
 
-  return ok({
-    entry:        sanitize(myEntry as Record<string, unknown> | null),
-    partnerEntry: sanitize(partnerEntry as Record<string, unknown> | null),
-  });
+  // Own entry: keep everything (including private free_thought + draft status).
+  const mine = stripKeys(myEntry as Record<string, unknown> | null);
+
+  // Partner entry: free_thought is private, and unsent drafts (shared === false)
+  // must stay hidden so only the final version reaches the partner. Legacy
+  // entries without a `shared` flag are treated as shared (always visible).
+  let theirs = stripKeys(partnerEntry as Record<string, unknown> | null);
+  if (theirs) {
+    theirs = theirs.shared === false ? null : { ...theirs, free_thought: undefined };
+  }
+
+  return ok({ entry: mine, partnerEntry: theirs });
 });
 
 export { handler };

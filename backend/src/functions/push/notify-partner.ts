@@ -13,18 +13,22 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
 
   const partnerId = me.partnerId as string;
 
-  // Idempotency check
+  // Throttle: notify on every save, but at most once per window per
+  // (sender, recipient, date) so rapid re-saves don't spam the partner while a
+  // genuine later edit still re-notifies.
+  const THROTTLE_MS = 10 * 60 * 1000;
   const logKey = { PK: `USER#${userId}`, SK: `NOTIF#${partnerId}#${date}#entry_saved` };
   const existing = await getItem(MAIN, logKey);
-  if (existing) return ok({ ok: true, skipped: true });
-
-  await putItem(MAIN, { ...logKey, sent_at: new Date().toISOString() });
+  if (existing?.sent_at) {
+    const elapsed = Date.now() - new Date(existing.sent_at as string).getTime();
+    if (elapsed < THROTTLE_MS) return ok({ ok: true, skipped: true });
+  }
 
   const pronoun  = (me.gender as string) === 'f' ? 'Она' : 'Он';
   const verb     = (me.gender as string) === 'f' ? 'заполнила' : 'заполнил';
   const suffix   = (me.gender as string) === 'f' ? 'а' : '';
 
-  await sendPushToUser(partnerId, {
+  const sent = await sendPushToUser(partnerId, {
     title: `${pronoun} ${verb} дневник 💌`,
     body:  `${me.name} уже написал${suffix} сегодня`,
     icon:  '/icons/icon-192.png',
@@ -32,7 +36,11 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
     url:   '/',
   });
 
-  return ok({ ok: true });
+  // Record the throttle marker only after a real send, so it never burns when
+  // the partner has no active subscription yet.
+  if (sent) await putItem(MAIN, { ...logKey, sent_at: new Date().toISOString() });
+
+  return ok({ ok: true, sent });
 });
 
 export { handler };
