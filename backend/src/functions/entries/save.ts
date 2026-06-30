@@ -2,6 +2,7 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { MAIN, putItem } from '../../lib/dynamo';
 import { requireAuth } from '../../lib/auth-middleware';
 import { ok, HttpError, withErrorHandling } from '../../lib/errors';
+import { encryptField, ENCRYPTED_ENTRY_FIELDS } from '../../lib/crypto';
 
 const ALLOWED_FIELDS = new Set([
   'mood_level', 'mood_text',
@@ -31,6 +32,13 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
 
   // Preserve saved_at on first save only
   entry.saved_at = body.saved_at || new Date().toISOString();
+
+  // Encrypt content fields at rest (metadata stays plaintext for queries/calendar).
+  // Empty/null values pass through unchanged → never stored as ciphertext.
+  // This also lazily migrates legacy plaintext entries on save (FR-10).
+  for (const field of ENCRYPTED_ENTRY_FIELDS) {
+    if (field in entry) entry[field] = await encryptField(entry[field]);
+  }
 
   await putItem(MAIN, entry);
   return ok({ ok: true });
