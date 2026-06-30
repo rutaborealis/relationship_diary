@@ -204,7 +204,7 @@ export async function encryptField(
  *   - anything else / decrypt failure → null, logged without content (FR-12/FR-13)
  */
 export async function decryptField(stored: unknown): Promise<string | null> {
-  if (stored === null || stored === undefined) return stored ?? null;
+  if (stored === null || stored === undefined) return null;
   if (typeof stored === 'string') return stored;
   if (!isEncBlob(stored)) return null;
 
