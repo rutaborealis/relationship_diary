@@ -47,6 +47,9 @@ const config = {
     resetCodeTtlMin:        15,
     resetMaxAttempts:       5,
     resetRateLimitPerHour:  5,
+    // Cap total confirm-reset attempts per email/hour — bounds brute force across
+    // code re-creations (each new code resets the per-code attempts counter).
+    resetConfirmRateLimitPerHour: 20,
     // Anti-enumeration: request-reset always answers in ~constant time (ms).
     resetResponseFloorMs:   600,
   },
