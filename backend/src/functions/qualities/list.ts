@@ -2,6 +2,7 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { MAIN, query } from '../../lib/dynamo';
 import { requireAuth } from '../../lib/auth-middleware';
 import { ok, withErrorHandling } from '../../lib/errors';
+import { decryptField } from '../../lib/crypto';
 
 const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const { userId } = await requireAuth(event);
@@ -11,9 +12,14 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
     ExpressionAttributeValues: { ':pk': `USER#${userId}`, ':prefix': 'QUALITY#' },
   });
 
-  const qualities = items
-    .map((item) => ({ id: item.qualityId, text: item.text, created_at: item.created_at }))
-    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  // Decrypt each text independently (legacy plaintext passes through unchanged).
+  const qualities = (await Promise.all(
+    items.map(async (item) => ({
+      id:         item.qualityId,
+      text:       await decryptField(item.text),
+      created_at: item.created_at,
+    })),
+  )).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
 
   return ok(qualities);
 });

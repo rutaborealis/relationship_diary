@@ -15,6 +15,8 @@ Globals:
         APP_DOMAIN:       !Ref AppDomain
         SES_FROM_ADDRESS: !Ref SesFromAddress
         STAGE:            !Ref Stage
+        # Content-encryption CMK. Only functions granted KMS IAM actually use it.
+        KMS_KEY_ID:       !Ref DiaryContentKey
         AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
   Api:
     Cors:
@@ -92,6 +94,35 @@ Resources:
             - { AttributeName: userId,         KeyType: RANGE }
           Projection:
             ProjectionType: ALL
+
+  # ── Content-encryption CMK ───────────────────────────────────────────────
+  # Symmetric envelope key for diary content (see lib/crypto.ts). Retained on
+  # stack delete/replace — losing the key means losing access to all data.
+  DiaryContentKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub 'Diary content envelope-encryption CMK (${Stage})'
+      KeySpec: SYMMETRIC_DEFAULT
+      KeyUsage: ENCRYPT_DECRYPT
+      EnableKeyRotation: true
+      PendingWindowInDays: 30
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAccountAdmin
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+
+  DiaryContentKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName:   !Sub 'alias/diary-content-${Stage}'
+      TargetKeyId: !Ref DiaryContentKey
 
   # ── S3 + CloudFront ──────────────────────────────────────────────────────
   FrontendBucket:
@@ -351,6 +382,7 @@ Resources:
       Policies:
         - DynamoDBReadPolicy: { TableName: !Ref DiaryMainTable }
         - SSMParameterReadPolicy: { ParameterName: diary/* }
+        - KMSDecryptPolicy: { KeyId: !Ref DiaryContentKey }
       Events:
         Api: { Type: Api, Properties: { Path: /api/entries, Method: get } }
 
@@ -371,6 +403,10 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
         - SSMParameterReadPolicy: { ParameterName: diary/* }
+        - Statement:
+            - Effect: Allow
+              Action: kms:GenerateDataKey
+              Resource: !GetAtt DiaryContentKey.Arn
       Events:
         Api: { Type: Api, Properties: { Path: /api/entries, Method: post } }
 
@@ -432,6 +468,7 @@ Resources:
       Policies:
         - DynamoDBReadPolicy: { TableName: !Ref DiaryMainTable }
         - SSMParameterReadPolicy: { ParameterName: diary/* }
+        - KMSDecryptPolicy: { KeyId: !Ref DiaryContentKey }
       Events:
         Api: { Type: Api, Properties: { Path: /api/qualities, Method: get } }
 
@@ -452,6 +489,10 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
         - SSMParameterReadPolicy: { ParameterName: diary/* }
+        - Statement:
+            - Effect: Allow
+              Action: kms:GenerateDataKey
+              Resource: !GetAtt DiaryContentKey.Arn
       Events:
         Api: { Type: Api, Properties: { Path: /api/qualities, Method: post } }
 
@@ -472,6 +513,10 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref DiaryMainTable }
         - SSMParameterReadPolicy: { ParameterName: diary/* }
+        - Statement:
+            - Effect: Allow
+              Action: kms:GenerateDataKey
+              Resource: !GetAtt DiaryContentKey.Arn
       Events:
         Api: { Type: Api, Properties: { Path: '/api/qualities/{id}', Method: patch } }
 
