@@ -48,6 +48,20 @@ const config = {
     domain: process.env.APP_DOMAIN || 'https://yourdomain.com',
     stage,
   },
+
+  // Content encryption at rest (envelope: KMS CMK + local AES-256-GCM with DEK cache).
+  // Storage layer only — API contracts are unchanged. See lib/crypto.ts.
+  crypto: {
+    // Production CMK id/arn (env KMS_KEY_ID injected by template.yaml).
+    kmsKeyId:       process.env.KMS_KEY_ID as string | undefined,
+    // Local "fake KMS": on when running against DynamoDB Local, or forced via KMS_LOCAL=1.
+    localMode:      isLocal || process.env.KMS_LOCAL === '1',
+    // Dev-only master key wrapping the DEK in local mode (any string; hashed to 32 bytes).
+    localMasterKey: process.env.LOCAL_ENC_KEY as string | undefined,
+    // DEK cache (encrypt side): reuse one data key across fields/saves in a warm container.
+    dataKeyTtlMs:   5 * 60 * 1000,
+    dataKeyMaxUses: 10_000,
+  },
 };
 
 export type AppConfig = typeof config;
