@@ -63,7 +63,7 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
 
   await deleteItem(MAIN, { PK: `VERIFY#${normalizedEmail}`, SK: 'CODE' });
 
-  const token = await signToken({ userId, email: userEmail });
+  const token = await signToken({ userId, email: userEmail, tv: 1 });
   return ok({ token, user: { id: userId, email: userEmail, name, gender } });
 });
 

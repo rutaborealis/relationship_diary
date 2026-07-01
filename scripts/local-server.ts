@@ -17,6 +17,8 @@ import { handler as register }    from '../backend/src/functions/auth/register';
 import { handler as verifyEmail }  from '../backend/src/functions/auth/verify-email';
 import { handler as login }        from '../backend/src/functions/auth/login';
 import { handler as me }           from '../backend/src/functions/auth/me';
+import { handler as requestReset }  from '../backend/src/functions/auth/request-reset';
+import { handler as confirmReset }  from '../backend/src/functions/auth/confirm-reset';
 
 // Users & Partners
 import { handler as usersSearch }    from '../backend/src/functions/users/search';
@@ -73,6 +75,8 @@ app.post('/api/auth/register',     adapt(register));
 app.post('/api/auth/verify-email', adapt(verifyEmail));
 app.post('/api/auth/login',        adapt(login));
 app.get('/api/auth/me',            adapt(me));
+app.post('/api/auth/request-reset', adapt(requestReset));
+app.post('/api/auth/confirm-reset', adapt(confirmReset));
 
 // Users & Partners
 app.get('/api/users/search',       adapt(usersSearch));

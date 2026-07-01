@@ -19,7 +19,11 @@ const handler = withErrorHandling(async (event: APIGatewayProxyEvent): Promise<A
   const match = await bcrypt.compare(password, profile.passwordHash as string);
   if (!match) throw new HttpError(401, 'Invalid email or password');
 
-  const token = await signToken({ userId: profile.userId as string, email: normalizedEmail });
+  const token = await signToken({
+    userId: profile.userId as string,
+    email: normalizedEmail,
+    tv: (profile.tokenVersion as number | undefined) ?? 1,
+  });
   return ok({
     token,
     user: {

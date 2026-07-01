@@ -6,6 +6,9 @@ import { HttpError } from './errors';
 export interface JwtPayload {
   userId: string;
   email: string;
+  // tokenVersion at issue time. Used to invalidate all prior tokens after a
+  // password reset (see ADR-0002). Optional/absent == 1 (no migration needed).
+  tv?: number;
 }
 
 async function getSecret(): Promise<string> {

@@ -33,6 +33,10 @@ export const api = {
     request<{ token: string; user: { id: string; email: string; name: string; gender: string; partnerId: string | null } }>('POST', '/api/auth/login', body),
   me: () =>
     request<{ id: string; email: string; name: string; gender: string; partnerId: string | null; partner: { id: string; name: string; gender: string } | null }>('GET', '/api/auth/me'),
+  requestReset: (body: { email: string }) =>
+    request<{ message: string }>('POST', '/api/auth/request-reset', body),
+  confirmReset: (body: { email: string; code: string; newPassword: string }) =>
+    request<{ message: string }>('POST', '/api/auth/confirm-reset', body),
 
   // Entries
   getEntry: (date: string) =>

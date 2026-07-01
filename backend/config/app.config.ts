@@ -42,6 +42,16 @@ const config = {
     verificationCodeTtlMin: 15,
     inviteTokenTtlHours:    72,
     bcryptSaltRounds:       12,
+    // Password reset (see docs/features/password-reset)
+    resetCodeLength:        6,
+    resetCodeTtlMin:        15,
+    resetMaxAttempts:       5,
+    resetRateLimitPerHour:  5,
+    // Cap total confirm-reset attempts per email/hour — bounds brute force across
+    // code re-creations (each new code resets the per-code attempts counter).
+    resetConfirmRateLimitPerHour: 20,
+    // Anti-enumeration: request-reset always answers in ~constant time (ms).
+    resetResponseFloorMs:   600,
   },
 
   app: {

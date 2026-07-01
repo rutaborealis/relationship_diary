@@ -23,11 +23,11 @@
 ## ⛔ Заблокировано (нужно решение PO)
 Фичи с метками `[BLOCKER]` / `[NEEDS-CEO-APPROVAL]` или проваленным QA.
 
-- _пусто_
+- **password-reset** — конвейер пройден (QA PASS 14/14, SECURITY PASS-WITH-NOTES; SEC-01 HIGH найден и исправлен в круге 1). Деплой подготовлен до «зелёной кнопки» в ветке `feat/password-reset` (7 коммитов), боевой выкат не выполнялся. Ждёт `[NEEDS-CEO-APPROVAL]`: (1) мерж `feat/password-reset` → `main`; (2) `bash scripts/deploy-backend.sh`; (3) `bash scripts/deploy-frontend.sh`. Совместимо с активными сессиями (tokenVersion). Артефакты: `docs/features/password-reset/05-deploy.md`.
 
 ---
 
 ## ✅ Готово
 | Фича (slug) | Завершена | Артефакты |
 |---|---|---|
-| _пусто_ | | |
+| content-encryption | 2026-06-30 | задеплоено в прод (KMS envelope), backfill выполнен; `docs/features/content-encryption/` |
